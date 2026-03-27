@@ -305,53 +305,98 @@
     );
   }
 
-  function solve(locked, newSide, newIdx) {
+  function getValidFutureSides(currentSides) {
+    const futures = [];
+    function gen(idx, seq) {
+      if (idx === 5) {
+        const p = seq.filter(s => s === "prop").length;
+        if (p >= 2 && p <= 3) futures.push([...seq]);
+        return;
+      }
+      for (const s of ["prop", "opp"]) {
+        const pc = seq.filter(x => x === "prop").length + (s === "prop" ? 1 : 0);
+        const oc = seq.filter(x => x === "opp").length  + (s === "opp"  ? 1 : 0);
+        const rem = 5 - seq.length - 1;
+        if (pc > 3 || oc > 3) continue;
+        if (pc + rem < 2 || oc + rem < 2) continue;
+        seq.push(s);
+        gen(idx + 1, seq);
+        seq.pop();
+      }
+    }
+    gen(currentSides.length, [...currentSides]);
+    return futures;
+  }
+
+  function canCompleteToSpecificFuture(partialAsgn, futureSides) {
     function bt(r, asgn) {
       if (r === 5) return validate(asgn) ? asgn : null;
-      if (r < newIdx) return bt(r + 1, [...asgn, locked[r]]);
-
-      const propSoFar = asgn.filter(a => a.side === "prop").length;
-      const oppSoFar  = asgn.filter(a => a.side === "opp").length;
-      const sidesToTry = r === newIdx ? [newSide] : ["prop","opp"];
-
-      for (const side of sidesToTry) {
-        if (side === "prop" && propSoFar >= 3) continue;
-        if (side === "opp"  && oppSoFar  >= 3) continue;
-        const type = PREPARED.has(r + 1) ? "prepared" : "impromptu";
-        const pool = POOLS[type][side];
-        for (const f of pool.first)
-          for (const s of pool.second) {
-            if (s === f) continue;
-            for (const t of pool.third) {
-              if (t === f || t === s) continue;
-              const res = bt(r + 1, [...asgn, { side, first: f, second: s, third: t }]);
-              if (res) return res;
-            }
+      if (r < partialAsgn.length) return bt(r + 1, asgn);
+      
+      const side = futureSides[r];
+      const type = PREPARED.has(r + 1) ? "prepared" : "impromptu";
+      const pool = POOLS[type][side];
+      
+      for (const f of pool.first)
+        for (const s of pool.second) {
+          if (s === f) continue;
+          for (const t of pool.third) {
+            if (t === f || t === s) continue;
+            const res = bt(r + 1, [...asgn, { side, first: f, second: s, third: t }]);
+            if (res) return res;
           }
-      }
+        }
       return null;
     }
-    return bt(0, []);
+    return bt(partialAsgn.length, [...partialAsgn]) !== null;
   }
 
-  function canPickSide(side) {
-    const currentIdx = rounds.findIndex(r => r === null);
-    if (currentIdx === -1) return false;
-    const locked = rounds.slice(0, currentIdx).filter(Boolean);
-    return solve(locked, side, currentIdx) !== null;
+  function isRobust(partialAsgn) {
+    const currentSides = partialAsgn.map(a => a.side);
+    const futures = getValidFutureSides(currentSides);
+    for (const future of futures) {
+      if (!canCompleteToSpecificFuture(partialAsgn, future)) return false;
+    }
+    return true;
   }
 
-  function getSideOptions() {
-    return {
-      prop: canPickSide("prop"),
-      opp: canPickSide("opp"),
-    };
+  function pickNextRobustSpeaker(partialAsgn, nextSide) {
+    const r = partialAsgn.length;
+    const type = PREPARED.has(r + 1) ? "prepared" : "impromptu";
+    const pool = POOLS[type][nextSide];
+    
+    for (const f of pool.first) {
+      for (const s of pool.second) {
+        if (s === f) continue;
+        for (const t of pool.third) {
+          if (t === f || t === s) continue;
+          const cand = { side: nextSide, first: f, second: s, third: t };
+          const newPartial = [...partialAsgn, cand];
+          if (isRobust(newPartial)) return cand;
+        }
+      }
+    }
+    return null;
+  }
+
+  function canComplete(prop, opp, remaining) {
+    for (let p = 0; p <= remaining; p++) {
+      const tp = prop + p, to = opp + (remaining - p);
+      if (tp >= 2 && tp <= 3 && to >= 2 && to <= 3) return true;
+    }
+    return false;
   }
 
   function getForcedSide() {
-    const options = getSideOptions();
-    if (options.prop && !options.opp) return "prop";
-    if (options.opp && !options.prop) return "opp";
+    const currentIdx = rounds.findIndex(r => r === null);
+    if (currentIdx === -1) return null;
+    const propCount = rounds.filter(r => r?.side === "prop").length;
+    const oppCount  = rounds.filter(r => r?.side === "opp").length;
+    const remaining = 5 - currentIdx - 1;
+    const canProp = propCount + 1 <= 3 && canComplete(propCount + 1, oppCount, remaining);
+    const canOpp  = oppCount  + 1 <= 3 && canComplete(propCount, oppCount + 1, remaining);
+    if (canProp && !canOpp) return "prop";
+    if (canOpp  && !canProp) return "opp";
     return null;
   }
 
@@ -359,10 +404,15 @@
   function pickSide(side) {
     const currentIdx = rounds.findIndex(r => r === null);
     if (currentIdx === -1) return;
-    const locked = rounds.slice(0, currentIdx).filter(Boolean);
-    const full = solve(locked, side, currentIdx);
-    if (!full) return;
-    rounds[currentIdx] = full[currentIdx];
+    
+    // Get all locked rounds up to now exactly as they are assigned
+    const lockedAsgn = rounds.slice(0, currentIdx).filter(Boolean);
+    
+    // Find robust speakers for the new round
+    const nextRound = pickNextRobustSpeaker(lockedAsgn, side);
+    if (!nextRound) return;
+    
+    rounds[currentIdx] = nextRound;
     render();
   }
 
@@ -385,8 +435,7 @@
     const propCount  = rounds.filter(r => r?.side === "prop").length;
     const oppCount   = rounds.filter(r => r?.side === "opp").length;
     const setCount   = propCount + oppCount;
-    const sideOptions = getSideOptions();
-    const forced      = getForcedSide();
+    const forced     = getForcedSide();
 
     // Subtitle
     const sub = document.getElementById("subtitle");
@@ -471,7 +520,7 @@
 
         ["prop","opp"].forEach(s => {
           const isForced  = forced === s;
-          const isBlocked = !sideOptions[s];
+          const isBlocked = forced && forced !== s;
           const btn = document.createElement("button");
           btn.className = `pick-btn ${s}${isForced ? " forced" : ""}${isBlocked ? " blocked" : ""}`;
           btn.textContent = s + (isForced ? " ←" : "");
