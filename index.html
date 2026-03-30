@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17,7 +18,6 @@
 
     #app { max-width: 640px; margin: 0 auto; }
 
-    /* ── Header ── */
     #header {
       display: flex;
       justify-content: space-between;
@@ -55,7 +55,6 @@
     }
     #undo-btn:disabled { color: #1e293b; cursor: not-allowed; }
 
-    /* ── Side pips ── */
     #pips {
       display: flex;
       gap: 20px;
@@ -81,7 +80,6 @@
     .pip.prop.filled { background: #3b82f6; box-shadow: 0 0 8px #3b82f688; }
     .pip.opp.filled  { background: #ef4444; box-shadow: 0 0 8px #ef444488; }
 
-    /* ── Round cards ── */
     #rounds { display: flex; flex-direction: column; gap: 6px; }
 
     .round-card {
@@ -115,7 +113,6 @@
     }
     .round-type.prepared { color: #c2410c; }
 
-    /* Side badge (locked) */
     .side-badge {
       padding: 4px 12px; border-radius: 6px;
       font-size: 11px; font-weight: 800;
@@ -128,7 +125,6 @@
       background: #991b1b33; color: #ef4444; border: 1px solid #991b1b55;
     }
 
-    /* Speakers (locked) */
     .speakers { display: flex; gap: 0; flex: 1; }
     .speaker-col {
       display: flex; flex-direction: column; gap: 2px;
@@ -141,12 +137,9 @@
       text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;
     }
     .speaker-row { display: flex; align-items: center; gap: 5px; }
-    .speaker-dot {
-      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    }
+    .speaker-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .speaker-name { font-size: 14px; font-weight: 700; }
 
-    /* Pick buttons (current) */
     .pick-btns { display: flex; gap: 8px; align-items: center; flex: 1; }
     .pick-btn {
       padding: 10px 28px; border-radius: 8px;
@@ -180,7 +173,6 @@
     }
     .forced-note { font-size: 10px; color: #374151; font-style: italic; margin-left: 4px; }
 
-    /* Done banner */
     #done-banner {
       display: none;
       margin-top: 20px; border-radius: 10px; padding: 16px 20px;
@@ -199,7 +191,6 @@
       border: 1px solid #166534; background: transparent; color: #4ade80; cursor: pointer;
     }
 
-    /* Color key */
     #key { margin-top: 20px; display: flex; gap: 18px; flex-wrap: wrap; }
     .key-item { display: flex; align-items: center; gap: 6px; }
     .key-dot { width: 7px; height: 7px; border-radius: 50%; }
@@ -209,7 +200,6 @@
 <body>
 <div id="app">
 
-  <!-- Header -->
   <div id="header">
     <div>
       <div class="eyebrow">Debate Tournament · 5 Rounds</div>
@@ -219,7 +209,6 @@
     <button id="undo-btn" disabled>↺ Undo</button>
   </div>
 
-  <!-- Pips -->
   <div id="pips">
     <div class="pip-group">
       <span class="pip-label prop">Prop</span>
@@ -239,10 +228,8 @@
     </div>
   </div>
 
-  <!-- Round cards -->
   <div id="rounds"></div>
 
-  <!-- Done banner -->
   <div id="done-banner">
     <div>
       <div id="done-title">✓ All Rounds Set</div>
@@ -251,7 +238,6 @@
     <button id="restart-btn">Start Over</button>
   </div>
 
-  <!-- Key -->
   <div id="key"></div>
 </div>
 
@@ -259,14 +245,37 @@
   // ── Data ────────────────────────────────────────────────────────────
   const PREPARED = new Set([2, 3]);
 
+  // Round-specific pools (keys are 1-indexed round numbers).
+  //
+  // Ordering encodes solver priority — first entry tried first.
+  //
+  //  • Rounds 2 & 3: only Yaoyao in first[] (effectively locks Yaoyao 1st).
+  //  • Round 3 prop:  Micah is FIRST in second[] → solver picks him here first.
+  //  • All other prop rounds: Micah is LAST in second[] → deprioritised.
+  //  • Micah never appears in opp second[] (he only speaks 2nd on prop).
+  //  • If Round 3 ends up as opp, the solver will still satisfy Micah's
+  //    second-quota by falling back to whichever remaining prop round works.
+
   const POOLS = {
-    impromptu: {
-      prop: { first: ["Yaoyao","Micah"], second: ["Micah","Tyler"],  third: ["Salina","Luke"] },
+    1: {
+      prop: { first: ["Yaoyao","Micah"], second: ["Tyler","Micah"],  third: ["Salina","Luke"] },
       opp:  { first: ["Yaoyao","Micah"], second: ["Tyler","Luke"],   third: ["Salina","Luke"] },
     },
-    prepared: {
+    2: {
+      prop: { first: ["Yaoyao"],         second: ["Tyler","Micah"],  third: ["Salina","Luke"] },
+      opp:  { first: ["Yaoyao"],         second: ["Tyler","Luke"],   third: ["Salina","Luke"] },
+    },
+    3: {
       prop: { first: ["Yaoyao"],         second: ["Micah","Tyler"],  third: ["Salina","Luke"] },
       opp:  { first: ["Yaoyao"],         second: ["Tyler","Luke"],   third: ["Salina","Luke"] },
+    },
+    4: {
+      prop: { first: ["Yaoyao","Micah"], second: ["Tyler","Micah"],  third: ["Salina","Luke"] },
+      opp:  { first: ["Yaoyao","Micah"], second: ["Tyler","Luke"],   third: ["Salina","Luke"] },
+    },
+    5: {
+      prop: { first: ["Yaoyao","Micah"], second: ["Tyler","Micah"],  third: ["Salina","Luke"] },
+      opp:  { first: ["Yaoyao","Micah"], second: ["Tyler","Luke"],   third: ["Salina","Luke"] },
     },
   };
 
@@ -285,7 +294,6 @@
   };
 
   // ── State ────────────────────────────────────────────────────────────
-  // rounds[i] = null | { side, first, second, third }
   let rounds = Array(5).fill(null);
 
   // ── Solver ───────────────────────────────────────────────────────────
@@ -332,11 +340,8 @@
     function bt(r, asgn) {
       if (r === 5) return validate(asgn) ? asgn : null;
       if (r < partialAsgn.length) return bt(r + 1, asgn);
-      
       const side = futureSides[r];
-      const type = PREPARED.has(r + 1) ? "prepared" : "impromptu";
-      const pool = POOLS[type][side];
-      
+      const pool = POOLS[r + 1][side]; // round-specific pool
       for (const f of pool.first)
         for (const s of pool.second) {
           if (s === f) continue;
@@ -361,18 +366,15 @@
   }
 
   function pickNextRobustSpeaker(partialAsgn, nextSide) {
-    const r = partialAsgn.length;
-    const type = PREPARED.has(r + 1) ? "prepared" : "impromptu";
-    const pool = POOLS[type][nextSide];
-    
+    const r = partialAsgn.length; // 0-indexed
+    const pool = POOLS[r + 1][nextSide]; // round-specific pool
     for (const f of pool.first) {
       for (const s of pool.second) {
         if (s === f) continue;
         for (const t of pool.third) {
           if (t === f || t === s) continue;
           const cand = { side: nextSide, first: f, second: s, third: t };
-          const newPartial = [...partialAsgn, cand];
-          if (isRobust(newPartial)) return cand;
+          if (isRobust([...partialAsgn, cand])) return cand;
         }
       }
     }
@@ -404,14 +406,9 @@
   function pickSide(side) {
     const currentIdx = rounds.findIndex(r => r === null);
     if (currentIdx === -1) return;
-    
-    // Get all locked rounds up to now exactly as they are assigned
     const lockedAsgn = rounds.slice(0, currentIdx).filter(Boolean);
-    
-    // Find robust speakers for the new round
-    const nextRound = pickNextRobustSpeaker(lockedAsgn, side);
+    const nextRound  = pickNextRobustSpeaker(lockedAsgn, side);
     if (!nextRound) return;
-    
     rounds[currentIdx] = nextRound;
     render();
   }
@@ -437,7 +434,6 @@
     const setCount   = propCount + oppCount;
     const forced     = getForcedSide();
 
-    // Subtitle
     const sub = document.getElementById("subtitle");
     if (allDone) {
       sub.textContent = "All rounds complete.";
@@ -447,10 +443,8 @@
       sub.textContent = `Round ${currentIdx + 1} — pick your side.`;
     }
 
-    // Undo button
     document.getElementById("undo-btn").disabled = setCount === 0;
 
-    // Pips
     ["prop","opp"].forEach(side => {
       const count = side === "prop" ? propCount : oppCount;
       document.querySelectorAll(`#${side}-pips .pip`).forEach((pip, i) => {
@@ -458,7 +452,6 @@
       });
     });
 
-    // Rounds
     const container = document.getElementById("rounds");
     container.innerHTML = "";
 
@@ -467,19 +460,16 @@
       const isPrepared = PREPARED.has(roundNum);
       const isLocked   = round !== null;
       const isCurrent  = i === currentIdx;
-      const isFuture   = !isLocked && !isCurrent;
 
       const card = document.createElement("div");
       card.className = "round-card " + (
         isLocked  ? `locked-${round.side}` :
-        isCurrent ? "current" :
-        "future"
+        isCurrent ? "current" : "future"
       );
 
       const inner = document.createElement("div");
       inner.className = "round-inner";
 
-      // Round meta
       const meta = document.createElement("div");
       meta.className = "round-meta";
       meta.innerHTML = `
@@ -489,13 +479,11 @@
       inner.appendChild(meta);
 
       if (isLocked) {
-        // Side badge
         const badge = document.createElement("div");
         badge.className = `side-badge ${round.side}`;
         badge.textContent = round.side;
         inner.appendChild(badge);
 
-        // Speakers
         const speakers = document.createElement("div");
         speakers.className = "speakers";
         ["first","second","third"].forEach((pos, pi) => {
@@ -548,7 +536,6 @@
       container.appendChild(card);
     });
 
-    // Done banner
     const banner = document.getElementById("done-banner");
     if (allDone) {
       banner.classList.add("visible");
@@ -573,7 +560,6 @@
     });
   }
 
-  // ── Init ─────────────────────────────────────────────────────────────
   document.getElementById("undo-btn").addEventListener("click", undo);
   document.getElementById("restart-btn").addEventListener("click", restart);
   buildKey();
